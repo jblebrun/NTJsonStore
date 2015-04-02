@@ -68,9 +68,11 @@ static const int DEFAULT_CACHE_SIZE = 50;
 
 
 @implementation NTJsonObjectCache
+{
+    NSRecursiveLock* _cacheLock;
+}
 
-
--(id)initWithCacheSize:(int)cacheSize deallocQueue:(dispatch_queue_t)deallocQueue
+-(id)initWithCacheSize:(int)cacheSize
 {
     self = [super init];
     
@@ -79,16 +81,16 @@ static const int DEFAULT_CACHE_SIZE = 50;
         _cacheSize = cacheSize;
         _items = [NSMutableDictionary dictionary];
         _cachedItems = [NSMutableArray array];
-        _deallocQueue = deallocQueue;
+        _cacheLock = [NSRecursiveLock new];
     }
-    
+
     return self;
 }
 
 
 -(id)initWithDeallocQueue:(dispatch_queue_t)deallocQueue
 {
-    return [self initWithCacheSize:DEFAULT_CACHE_SIZE deallocQueue:deallocQueue];
+    return [self initWithCacheSize:DEFAULT_CACHE_SIZE];
 }
 
 
@@ -132,7 +134,9 @@ static const int DEFAULT_CACHE_SIZE = 50;
         CACHE_LOG(@"Cache Hit (not in use) - %d", (int)rowId);
         // coming back into action!
         item.isInUse = YES;
+        [_cacheLock lock];
         [_cachedItems removeObjectIdenticalTo:item];    // it is no longer in our cache, since it's active
+        [_cacheLock unlock];
     }
     else
     {
@@ -167,7 +171,9 @@ static const int DEFAULT_CACHE_SIZE = 50;
 -(void)removeCacheItem:(NTJsonObjectCacheItem *)item
 {
     item.cache = nil;   // unlink from cache so proxyDeallocedForCacheItem: will not be called
+    [_cacheLock lock];
     [_cachedItems removeObjectIdenticalTo:item];
+    [_cacheLock unlock];
     [_items removeObjectForKey:@(item.rowId)];
 }
 
@@ -184,19 +190,25 @@ static const int DEFAULT_CACHE_SIZE = 50;
 -(void)purgeCacheWithFlushAll:(BOOL)flushAll
 {
     int cacheSize = (flushAll) ? 0 : _cacheSize;
-    
+
+    CACHE_LOG(@"purging - %d", (int)item.rowId);
+
     // clear any unused values from the cache...
-    
-    while (_cachedItems.count > cacheSize )
-    {
-        NTJsonObjectCacheItem *item = _cachedItems[0];  // grab oldest...
-        
-        CACHE_LOG(@"purging - %d", (int)item.rowId);
-        
-        // remove it...
-        
-        [self removeCacheItem:item];
-    }
+    do {
+
+        [_cacheLock lock];
+
+        NTJsonObjectCacheItem *item = _cachedItems.firstObject;  // grab oldest...
+        if (item) [self removeCacheItem:item];
+        NSUInteger size = _cachedItems.count;
+
+        [_cacheLock unlock];
+
+
+        if ( size <= cacheSize ) break;
+
+    } while (true);
+
 }
 
 

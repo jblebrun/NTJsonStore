@@ -59,7 +59,7 @@
         _pendingColumns = [NSMutableArray array];
         _pendingIndexes = [NSMutableArray array];
         _connection = [[NTJsonSqlConnection alloc] initWithFilename:store.storeFilename connectionName:self.name];
-        _objectCache = [[NTJsonObjectCache alloc] initWithDeallocQueue:_connection.queue];
+        _objectCache = [[NTJsonObjectCache alloc] init];
     }
 
     return self;
@@ -196,7 +196,7 @@
         else
         {
             if ( !_objectCache )
-                _objectCache = [[NTJsonObjectCache alloc] initWithCacheSize:cacheSize deallocQueue:self.connection.queue];
+                _objectCache = [[NTJsonObjectCache alloc] initWithCacheSize:cacheSize];
 
             else
                 _objectCache.cacheSize = cacheSize;
